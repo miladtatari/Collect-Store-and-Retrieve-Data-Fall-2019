@@ -1,1 +1,1 @@
-
+This is the first HW assignment for this course. The first few HWs are mostly introduction to R and getting more familiar with what we need for this course. I was beginner in R when I took this course. I am uploading the code in .rmd file and knitted file as a pdf and/or html. Hope you like it. 
