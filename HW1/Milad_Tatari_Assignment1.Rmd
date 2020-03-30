@@ -1,0 +1,131 @@
+---
+title: "Assignment 1"
+author: "Milad Tatari"
+date: "9/11/2019"
+output: html_document
+---
+
+This is my first Markdown Document as HW#1 for DA5020.
+
+Let's load the data "mtcars".
+
+```{r}
+data(mtcars)
+str(mtcars)
+```
+
+1) What does the gear variable describe? Read the help for ?mtcars to find out. (5 points)
+
+```{r}
+?mtcars
+```
+[,10]	gear	Number of forward gears
+
+Gear is the 10th variable showing the number of forward gears.
+
+2) Make a scatterplot of mpg vs cyl. (5 points)
+```{r}
+library(ggplot2)
+
+qplot(y=mpg, x=cyl, data=mtcars)
+```
+
+As we see, the higher number of the cylinder, the more fuel consumption is. (lower MPG)
+
+3) Which variables in mtcars are categorical? Which variables are continuous? (Hint: type ?mtcars to read the documentation for the dataset). How can you see this information when you run mtcars? (10 points)
+
+mpg, disp, hp, drat, weight, wt, qsec are continous
+Cyl, vs,am, gear, Carb are categorical.
+
+continous variables can be any number including decimal or integer, while categorical variables have limited value based on a particular group. ?mtcards gives us explanations of variables and we can see the values of mtcars data set.
+
+4) What plots does the following code make? What does . do? (10 points)
+```{r}
+ggplot(data = mtcars) +
+geom_point(mapping = aes(x = disp, y = mpg)) +
+facet_grid(cyl ~ .)
+```
+
+This code plots mpg versus displacement for three subplots of cylinder numbers (4,6,8). Subplots are horizontal with 3 rows. 
+"." plots the graph for all values of cylinder (in this case 3 rows). When we bring it to the begining before the cyl, it draws the plot in column order. The . removes the facet splits for either the row or the column. 
+
+```{r}
+ggplot(data = mtcars) +
+geom_point(mapping = aes(x = disp, y = mpg)) +
+facet_grid(. ~ am)
+```
+
+5)Read ?facet_wrap. What does nrow do? What does ncol do? What other options control the layout of the individual panels?  Why doesn't facet_grid() have nrow and ncol argument? (10 points) 
+
+```{r}
+?facet_wrap
+```
+nrow or ncolcontrols the plot layout by indicating the number of rows or columns. They are for facet_wrap() only. By default, column number is the number that fits the page and then however the rows are needed. Other option controls are:
+Scales (fix or free), shrink (can fit scales to raw data or statistics), labeller (takes one data frame and returnes a list of vectors), as.table (facets are laid out like a table or plot), switch (changing the positions of the labels), drop (hiding or showing factor levels), dir (determining horizontal or vertical direction), strip.position (placing the labels on either of the four sides). nrow or ncol are not defined for facet_grid as there is no control on number of rows and columns for facet_grid. 
+
+6) 
+
+```{r}
+ggplot(data = mtcars, mapping = aes(x = disp, y = mpg, color = cyl)) + 
+  geom_point() + 
+  geom_smooth(se = FALSE)
+?ggplot
+```
+This plot shows a mapping of mpg versus dsiplacement as it is colored for number of cylinders. It should be a scatter plot showing diffrent points. Geom_smooth adds a regression line and when the logical value is False, the confidence interval is not shown around the regression. My prediction is verified with the plot after runing the code.
+
+7) What is the default geom associated with stat_summary()? How could you rewrite the below plot to use that geom function instead of the stat function? (10 points)
+
+the default geom is a pointrange. 
+
+```{r}
+ggplot(data = mtcars) + 
+  stat_summary(
+    mapping = aes(x = disp, y = mpg),
+    fun.ymin = min,
+    fun.ymax = max,
+    fun.y = median
+  )
+```
+
+```{r}
+ggplot(data = mtcars) +
+  geom_pointrange(mapping = aes(x = disp, y = mpg),
+                  stat = "summary",
+                  fun.ymin = min,
+                  fun.ymax = max,
+                  fun.y = median)
+```
+
+
+8) Use the mpg dataset from the ggplot2 package to answer the further questions: (10 points)
+
+For the following code, compare geom_jitter() with geom_count()
+
+ ggplot(data = mpg, mapping = aes(x = cty, y = hwy)) +
+    geom_point()
+```{r}
+data(mpg)
+str(mpg)
+```
+
+```{r}
+ ggplot(data = mpg, mapping = aes(x = cty, y = hwy)) +
+    geom_point()
+```
+```{r}
+ ggplot(data = mpg, mapping = aes(x = cty, y = hwy)) +
+    geom_jitter()
+```
+
+Overplotting happens when one or more points are in the same place. Here we have overplotting. One way to improve it is to add a samll amount of random noise to see where the plot is more densed. This can be done by geom_jitter. 
+
+9) What does the below plot code tell you about the relationship between cty and hwy in mpg? Why is coord_fixed() important? What does geom_abline() do? (15 points)
+```{r}
+ggplot(data = mpg, mapping = aes(x = cty, y = hwy)) +
+  geom_point() + 
+  geom_abline() +
+  coord_fixed()
+
+```
+
+It shows that MPG in highway is greater than MPG in city. coord_fixed fixes coordinates of the linear. geom_abline adds a line to better read th data and compare them. 
