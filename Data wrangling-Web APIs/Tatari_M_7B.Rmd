@@ -1,0 +1,276 @@
+---
+title: "HW7B"
+author: "Milad Tatari"
+date: "11/3/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+This tutorial shows you how to use the Twitter Streaming API to get tweet data using R. You can retrieve Twitter tweet data in JSON format through the Twitter Web API external application after registering the application with Twitter.
+This code did not work, so I am going to provide 8 solutions that I tried and it did not work, I mean hanshake function. Finally, I will extract tweeter data by searchTweeter function.
+
+```{r}
+
+setwd("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B")
+
+library(RCurl)
+#install.packages("ROAuth")
+library(ROAuth)
+#install.packages("streamR")
+library(streamR)
+#install.packages("twitteR")
+library(twitteR)
+
+library(rjson)
+
+options(RCurlOptions = list(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")))
+
+   download.file(url="http://curl.haxx.se/ca/cacert.pem",ssl.verifypeer = FALSE, destfile="cacert.pem")
+
+download.file(url="http://curl.haxx.se/ca/cacert.pem", destfile="cacert.pem")
+
+outFile <- "tweets_sample.json"
+requestURL        <- "https://api.twitter.com/oauth/request_token"
+accessURL         <- "https://api.twitter.com/oauth/access_token"
+authURL           <- "https://api.twitter.com/oauth/authorize"
+consumerKey       <- "XrRQO2YYQTRNGpTendMVIAeqE"
+consumerSecret    <- "E074LwAYzK8AyayMcP32Iuov1sW1wOUqgmELfmHNC6v0Yb1vnG"
+accessToken       <- "1186757776556482560-CJAXaIcSSZ2OWxy0V9RMVqJinlI1xd"
+accessSecret <- "V7PXqzr6o4oZnn8PPqtKsnguJWmOVTYylrdFAgpjfYfjE"
+
+#obtain oauth by handshaking and save the oauth to the local disk for future connections
+myoauth <- OAuthFactory$new( consumerKey=consumerKey,
+                              consumerSecret=consumerSecret,
+                              requestURL=requestURL,
+                              accessURL=accessURL, 
+                              authURL=authURL,needsVerifier=FALSE)
+
+setup_twitter_oauth(consumerKey ,consumerSecret,accessToken ,accessSecret)
+
+#myoauth$handshake(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl"))
+
+
+#tweets <- twitteR::searchTwitter("#trump",n =12,lang ="en",since = '2018-11-08')
+#strip retweets
+#strip_retweets(tweets)
+
+#sampleStream( file=outFile, oauth=my_oauth, tweets=100 )
+
+
+
+
+#options(RCurlOptions = list(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")))
+
+
+#my_oauth$handshake(cainfo="cacert.pem")
+
+
+library("openssl")
+library("httpuv")
+#setup_twitter_oauth(consumer_key, consumer_secret, access_token , access_secret)
+#origop <- options("httr_oauth_cache")
+#options(httr_oauth_cache = TRUE)
+
+#CD_Timeline <- userTimeline(user = "ChancellorDav", n = 3200, includeRts = FALSE, excludeReplies = TRUE)
+#toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+
+#Sapply Approach
+#CD_tweets <- sapply(CD_Timeline, function(x) { strsplit(gsub("[^[:alnum:] ]", "", x$text), " +")[[1]] })
+
+#Overview of Data Scraped
+#head(CD_tweets)
+#tail(CD_tweets)
+#str(CD_tweets)
+
+# returns the oauth 
+#myoauth$handshake()
+
+
+
+# installing/loading the latest installr package:
+#install.packages("installr") 
+#library(installr) # install+load installr
+#updateR() # updating R.
+
+```
+
+```{r, echo=FALSE, fig.cap="Accesing to tweeter", out.width = '80%', out.height='80%', fig.align='center'}
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/1.png")
+
+```
+Step 1: I am getting an error as this:
+
+```{r, echo=FALSE, fig.cap="Error in handshake function", out.width = '80%', out.height='80%', fig.align='center'}
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/2.png")
+
+```
+
+Step2: I struggled a lot, searched a lot to find a solution that works to connect with twitter using handshake, I could not do it. I have to mention that I was able to connect with twitter with other functions that will be mentioned later. Here are a couple of solutions that did not work for the handshake.
+
+Solution 1: is to update R
+
+```{r, echo=FALSE, fig.cap="Solution 1,Error", out.width = '80%', out.height='80%', fig.align='center'}
+#solution 1 was to update R. 
+
+# installing/loading the latest installr package:
+#install.packages("installr") 
+#library(installr) # install+load installr
+#updateR() # updating R.
+#my Rstudio is uptodate and it did not work
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/3.png")
+
+```
+
+Solution 2: Running without oauth setup, sth like this:
+
+```{r, echo=FALSE, fig.cap="Solution 2,Error", out.width = '80%', out.height='80%', fig.align='center'}
+
+
+requestURL        <- "https://api.twitter.com/oauth/request_token"
+accessURL         <- "https://api.twitter.com/oauth/access_token"
+authURL           <- "https://api.twitter.com/oauth/authorize"
+consumerKey       <- "XrRQO2YYQTRNGpTendMVIAeqE"
+consumerSecret    <- "E074LwAYzK8AyayMcP32Iuov1sW1wOUqgmELfmHNC6v0Yb1vnG"
+accessToken       <- "1186757776556482560-CJAXaIcSSZ2OWxy0V9RMVqJinlI1xd"
+accessSecret <- "V7PXqzr6o4oZnn8PPqtKsnguJWmOVTYylrdFAgpjfYfjE"
+twitCred <- OAuthFactory$new(consumerKey=consumerKey,
+                             consumerSecret=consumerSecret,
+                             requestURL=requestURL,
+                             accessURL=accessURL,
+                             authURL=authURL)
+#twitCred$handshake()
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/4.png")
+
+```
+
+Solution 3: Getting appropriate libraries: still did not work
+
+```{r, echo=FALSE, fig.cap="Solution 3,Error", out.width = '80%', out.height='80%', fig.align='center'}
+   library(twitteR)
+    library(ROAuth)
+    library(RCurl) 
+
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/5.png")
+
+```
+
+Solution 4: doing authentication in cmd, it did not work:
+
+```{r, echo=FALSE, fig.cap="Solution 4,Error", out.width = '80%', out.height='80%', fig.align='center'}
+
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/6.png")
+
+```
+
+Solution 5: Getting the following libraries, but still it did not work
+
+```{r, echo=FALSE, fig.cap="Solution 5,Error", out.width = '80%', out.height='80%', fig.align='center'}
+
+library("openssl")
+library("httpuv")
+
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/7.png")
+
+```
+
+Solution 6: Installing StreamR from github
+library(devtools)
+devtools::install_github("pablobarbera/streamR/streamR")
+
+```{r, echo=FALSE, fig.cap="Solution 6,Error", out.width = '80%', out.height='80%', fig.align='center'}
+
+#library(devtools)
+#devtools::install_github("pablobarbera/streamR/streamR")
+
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/8.png")
+
+
+```
+
+Soltion 7: Updating all the packages:
+
+```{r, echo=FALSE, fig.cap="Solution 7,Error", out.width = '80%', out.height='80%', fig.align='center'}
+
+#sessionInfo()
+#update.packages()
+
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/9.png")
+
+```
+
+Solution 8: I have read a lot of forums and discusions, I notice that it is a very common probles, I did my best solve the issure also using other suggestions in the litrature, but it did not solve. It includes installation of other packages as well.
+I also did authentication of streamR. 
+
+```{r, echo=FALSE, fig.cap="Solution 8,Other searches", out.width = '80%', out.height='80%', fig.align='center'}
+#install.packages(c("devtools", "rjson", "bit64", "httr"))
+
+#RESTART R session!
+
+#library(devtools)
+#library(rjson)
+#library(bit64)
+#library(httr)
+#install_github("twitteR", username="geoffjentry")
+#library(twitteR)
+# streamR authentication
+#credentials_file <- "my_oauth.Rdata"
+#if (file.exists (credentials_file)) {
+ # load (credentials_file)
+#} else {
+ # cred <- OAuthFactory $ new (consumerKey = consumer_key, consumerSecret =
+                               # consumer_secret, requestURL = reqURL, accessURL = accessURL, authURL = authURL)
+ # cred $ handshake (cainfo = system.file ("CurlSSL", "cacert.pem", package = "RCurl"))
+ # save (cred, file = credentials_file)
+#}
+
+
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/10.png")
+knitr::include_graphics("C:/Users/milad/OneDrive/Desktop/data science/DA5020/HW7B/11.png")
+
+```
+
+Finally, this is the working solution:
+we want to extract the tweeter of President Trump for example:
+
+```{r}
+#install.packages("rtweet")
+library(rtweet)
+# plotting and pipes - tidyverse!
+library(dplyr)
+# text mining library
+#install.packages("tidytext")
+library(tidytext)
+options(RCurlOptions = list(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")))
+
+   download.file(url="http://curl.haxx.se/ca/cacert.pem",ssl.verifypeer = FALSE, destfile="cacert.pem")
+
+download.file(url="http://curl.haxx.se/ca/cacert.pem", destfile="cacert.pem")
+
+outFile <- "tweets_sample.json"
+requestURL        <- "https://api.twitter.com/oauth/request_token"
+accessURL         <- "https://api.twitter.com/oauth/access_token"
+authURL           <- "https://api.twitter.com/oauth/authorize"
+consumerKey       <- "XrRQO2YYQTRNGpTendMVIAeqE"
+consumerSecret    <- "E074LwAYzK8AyayMcP32Iuov1sW1wOUqgmELfmHNC6v0Yb1vnG"
+accessToken       <- "1186757776556482560-CJAXaIcSSZ2OWxy0V9RMVqJinlI1xd"
+accessSecret <- "V7PXqzr6o4oZnn8PPqtKsnguJWmOVTYylrdFAgpjfYfjE"
+
+
+myoauth <- OAuthFactory$new( consumerKey=consumerKey,
+                              consumerSecret=consumerSecret,
+                              requestURL=requestURL,
+                              accessURL=accessURL, 
+                              authURL=authURL,needsVerifier=FALSE)
+
+setup_twitter_oauth(consumerKey ,consumerSecret,accessToken ,accessSecret)
+
+
+Tweets<- searchTwitter("trump", n=10,lang = "en") 
+head(Tweets)
+```
+t
+
