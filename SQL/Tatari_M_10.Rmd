@@ -1,0 +1,443 @@
+---
+title: "DA5020 - Week 10 SQLite and comparing dplyr to SQL Developed By Milad Tatari"
+output:
+  pdf_document: default
+  word_document: default
+date: '`r Sys.Date()`'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  # mute messages output
+  message = FALSE
+)
+```
+This week you are responsible for chapters 10, 11, 12  in the "Data Collection, Integration and Analysis" textbook. Review each chapter separately and work through all examples in the text BEFORE starting the assignment.  You will use the schema you developed in homework 6 to store data in SQLite.
+
+This week's assignment you use the relational schema you designed in week 6 and store data into the SQLite relational database system. Load the Unemployment and Educational data files into R studio. One file contains yearly unemployment rates from 1970 to 2015, for counties in the US. The other file contains aggregated data percentages on the highest level of education achieved for each census member. The levels of education are: "less than a high school diploma", "high school diploma awarded", "attended some college", "college graduate and beyond". The census tracks the information at the county level and uses a fips number to represent a specific county within a U.S. state. The fips number is a 5 digit number where the first two digits of the fips number represents a U.S. state, while the last three digits represent a specific county within that state.  
+
+
+## Questions
+
+1. Revisit the census schema you created for homework 6. After installing SQLite, implement the tables for your database design in SQLite and load the data  into the correct tables using either SQL INSERT statements or CSV loads. Make sure the database design is normalized (at least 3NF) and has minimal redundancy. Make sure your SQLite tables have primary keys as well as  foreign keys for relationships.  (20 points) 
+```{r}
+
+a <- read.csv("FipsEducationsDA5020v2.csv")
+b <- read.csv("FipsUnemploymentDA5020.csv")
+#install.packages("stringr")
+library(stringr)
+#install.packages("tidyr")
+library(tidyr)
+library(dplyr)
+
+#every measurement for a year and fips is reapeted 4 times which is not good, so we use spread function to clean it up.
+a.new <- a%>%
+  spread(key=percent_measure,value=percent)
+
+#Seperating the state and counties  
+a.sep <- a.new %>% 
+  separate(county_state, into = c("state","county"))
+d <- select(a.sep, fips,county,state)
+#making the FIPS data frame to make the table
+fipsdf <- as_data_frame(d)%>%
+  group_by(fips,county,state)  %>%
+  summarize()
+# Renaming the a.sep colmns to amke it easier to work with.
+colnames(a.sep)<- c("fips", "year","state","county","rural","description","PLUS4College","SOMEcollege","DIPLOMA","LESSDiploma")
+
+
+#install.packages("RSQLite")
+
+library("RSQLite")
+# open a connection to SQLite and create the EDUEMPDB database
+db<-dbConnect(SQLite(),dbname="EDUEMPDBmiladTA.sqlite")
+summary(db)
+dbListTables(db)
+
+# In SQLite foreign key constraints are disabled by default, so they must be enabled for each database connection separately by turning pragma foreign_keys=on
+dbSendQuery(conn = db, "pragma foreign_keys=on;")
+# Use the unique function to remove redundancy
+FIPS.DF<-unique(cbind.data.frame(as.integer(a.sep$fips),as.character(a.sep$county),as.character(a.sep$state)))
+colnames(FIPS.DF)<- c("fipsID", "County","State")
+
+# Create the FIPS table, specifying fipsID as the PRIMARY KEY
+# Since we are specifying a primary ID, there is no need for autoincremented rowid that is automatically added by SQLite. Add WITHOUT ROWID to the end of the CREATE TABLE statement.
+dbSendQuery(conn = db,  "CREATE TABLE FIPS (
+            fipsID INTEGER PRIMARY KEY,
+            County TEXT,
+            State TEXT)
+            WITHOUT ROWID")
+dbWriteTable(conn = db, name = "FIPS", value = FIPS.DF, row.names=FALSE, append = TRUE)
+dbListTables(db)
+#dbReadTable(db, "FIPS")
+# Making the rural table
+s1 <- select(a.sep, rural,description)
+rural.DF <- as_data_frame(s1)%>%
+  group_by(rural,description)  %>%
+  summarize()
+rural.DF <- unique(cbind.data.frame(as.integer(rural.DF$rural),as.character(rural.DF$description)))
+colnames(rural.DF)<- c("ruraliD","description")
+library(dplyr)
+#rural.DF<-rural.DF[1:9,]
+
+
+dbSendQuery(conn = db,  "CREATE TABLE RURAL(
+            ruraliD INTEGER PRIMARY KEY,
+            description TEXT)
+            WITHOUT ROWID")
+# insert the RURAL data frame into the Student table in the EDUEMPDB.sqlite database make sure you set row.names=FALSE or else you will get an extra column
+dbWriteTable(conn = db, name = "RURAL", value = rural.DF, row.names=FALSE, append = TRUE)
+
+dbListTables(db)
+dbReadTable(db, "RURAL")
+
+#Create the education table, specifying fips ID  and ruralID as foreign keys.
+# In this table there is no column that can be used as a primary ID, so we will have to use and autoincremented ROWID as the primary key. Since SQLite does this automatically, we don't have to add any extra statements. Just make sure that you DO NOT include the WITHOUT ROWID optimization in the CREATE TABLE statement.
+
+Education.DF<-unique(cbind.data.frame(as.integer(a.sep$fips),as.character(a.sep$year),as.integer(a.sep$rural),as.numeric(a.sep$PLUS4College),as.numeric(a.sep$SOMEcollege),as.numeric(a.sep$DIPLOMA),as.numeric(a.sep$LESSDiploma)))
+
+colnames(Education.DF)<- c("fipsID","YEAR","rural", "PLUS4College","SOMEcollege","DIPLOMA","LESSDiploma")
+f <- Education.DF%>%
+  select(rural)%>%
+  group_by(rural)%>%
+  summarise()
+
+dbSendQuery(conn = db,  "CREATE TABLE Education(
+            fipsID INTEGER,
+            YEAR INTEGER,
+            rural INTEGER,
+            PLUS4College REAL,
+            SOMEcollege REAL,
+            DIPLOMA REAL,
+            LESSDiploma REAL,
+            FOREIGN KEY(fipsID) REFERENCES FIPS(fipsID)
+            FOREIGN KEY(rural) REFERENCES RURAL(ruraliD))")
+
+dbWriteTable(conn = db, name = "Education", value = Education.DF,row.names = FALSE,append = TRUE)
+head(dbReadTable(db,"Education"))
+
+
+EMPLOY.DF<-unique(cbind.data.frame(as.integer(b$fips),as.integer(b$year),as.double(b$percent_unemployed)))
+
+colnames(EMPLOY.DF)<- c("fips","year","unemployedRate")
+
+dbSendQuery(conn = db,  "CREATE TABLE EMPLOYMENT (
+            fips INTEGER,
+            year INTEGER,
+            unemployedRate REAL,
+            FOREIGN KEY (fips) REFERENCES FIPS(fipsID))")
+
+dbWriteTable(conn = db, name = "EMPLOYMENT", value = EMPLOY.DF,row.names = FALSE,append = TRUE)
+head(dbReadTable(db,"EMPLOYMENT"))
+
+#We have created 4 tables as follows which have the minimum redundancy and are 3NF:
+#FIPS: fipsID is the PrimaryKEY
+#RURAL: ruraliD is the primary key. "NULL" is conisdered as 10 (integer)
+#EDUCATION: fipsID and rural are the foreign keys
+#EMPLOYMENT: fipsID is the foreign key
+
+
+
+```
+
+
+2. Write SQL expressions to answer the following queries: (40 points) 
++ 2.0 In the year 1970, what is the population percent that did not earn a high school diploma for the Nantucket county in Massachusetts? What about the year 2015?
+
+```{r}
+dbGetQuery(db, "Select LESSDiploma FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE County='Nantucket' AND State='MA' AND YEAR='1970'")
+# returns 33.7
+
+dbGetQuery(db, "Select LESSDiploma FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE County='Nantucket' AND State='MA' AND YEAR='2015'")
+#returns 5.2
+
+```
+
++ 2.1 What is the average population percentage that did not earn a high school diploma for the counties in Alabama for the year 2015?
+
+```{r}
+dbGetQuery(db, "SELECT AVG(LESSDiploma) FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE State='AL' AND YEAR='2015'")
+```
+
++ 2.2 What is the average percentage of college graduates for the counties in the state of Massachusetts for the year 2015?
+```{r}
+dbGetQuery(db, "SELECT AVG(PLUS4College) FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE State='MA' AND YEAR='2015'")
+#It is 38.52%
+```
+
++ 2.3 Determine the average percentage of the population that did not earn a high school diploma for the counties in Alabama for each year within the dataset. The result should return the calendar year and the average percentage drop out rate for that year.
+```{r}
+dbGetQuery(db, paste("SELECT YEAR, AVG(LESSDiploma)", "FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE State='AL'","GROUP BY YEAR", "ORDER BY AVG(LESSDiploma) DESC"))
+```
+
++ 2.4 What is the most common rural_urban code for the U.S. counties?
+```{r}
+dbGetQuery(db, paste("SELECT rural, COUNT(rural)", "FROM Education","GROUP BY rural","ORDER BY COUNT(rural) DESC"))
+#the most common rural code is 6
+```
+
++ 2.5 Which counties have not been coded with a rural urban code? Return a result that contains two fields: County, State for the counties that has not been assigned a rural urban code. Do not return duplicate values in the result. Order the result alphabetically by state.
+
+```{r}
+#rural code number 10 has not been assigned any rural ID
+dbGetQuery(db, paste("SELECT county, state", "FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE rural='10'","GROUP BY County","ORDER BY State"))
+```
+
++ 2.6 What is the minimal percentage of college graduates for the counties in the state of Mississippi for the year 2010?
+
+```{r}
+
+#year 2010 does not exist, I consider 2015
+dbGetQuery(db, paste("SELECT county,PLUS4College FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE State='MS' AND YEAR='2015'","ORDER BY PLUS4College"))
+
+#Minimum percent is 7.2 for "Issaquena" county
+```
+
++ 2.7 Which state contains the most number of counties that have not been provided a rural urban code?
+```{r}
+dbGetQuery(db, paste("SELECT state, COUNT(county)", "FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE rural='10'","GROUP BY State","ORDER BY COUNT(county)"))
+
+#In all states, there are 5 counties that have not been assigned a rural ID
+```
+
++ 2.8 In the year 2015, which fip counties, U.S. states contain a higher percentage of unemployed citizens than the percentage of college graduates? List the county name and the state name. Order the result alphabetically by state.
+```{r}
+
+dbGetQuery(db, "SELECT county, state, PLUS4College, unemployedRate FROM Education
+           LEFT JOIN Fips ON Education.fipsID = Fips.fipsID
+           LEFT JOIN EMPLOYMENT
+           ON Education.fipsID = EMPLOYMENT.fips
+           AND Education.YEAR = EMPLOYMENT.year
+           WHERE Education.YEAR='2015'
+           AND unemployedRate>PLUS4College")
+```
+
++ 2.9 Return the county, U.S. state and year that contains the highest percentage of college graduates in this dataset?
+```{r}
+dbGetQuery(db, paste("SELECT county,state,YEAR, MAX(PLUS4College)", "FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID"))
+
+#MAX happens in Falls county, VA state in 2015
+```
+
+
+3. Compare your SQL SELECT statements to your dplyr statements written to answer the same questions. Do you have a preference between the two methods? State your reasons for your preference. (10 points) 
+```{r}
+#RSQLite is a database management system, But if you use Exploratory and/or modern R, most likely you are already using dplyr to transform data by filtering, aggregating, sorting, etc. dplyr is a R package that provides a set of grammar based functions to transform data. Compared to using SQL, it’s much easier to construct and much easier to read what’s constructed.dyplyer is easier tow ork with as we can use different packages in R since the programming is done in R, and indeed it is not a database management system. So it is much easier to work with.
+
+# Based on my experience the total number of codes are more or less same. It is a little bit harder to get used to SQL, but it gives much more capablities than dplyr like relational data tables and whenever needed they can be called, so it is faster.
+
+#In conclusion, it takes time to be master in SQL programming but it can significantly reduce the compuatational costs as they are so fast.
+
+```
+3.0 In the year 1970, what is the population percent that did not earn a high school diploma for the Nantucket county in Massachusetts? What about the year 2015?
+
+```{r}
+# Percent not attaining a high school diploma in MA and Nantucket county in 1970 and 2015
+#Filter works on the rows
+#select works on the columns (variables)
+#group_by gathers all the same parameters in column and make them ready for other analysis by summarize
+a <- read.csv("FipsEducationsDA5020v2.csv")
+b <- read.csv("FipsUnemploymentDA5020.csv")
+#install.packages("stringr")
+library(stringr)
+#install.packages("tidyr")
+library(tidyr)
+library(dplyr)
+
+#every measurement for a year and fips is reapeted 4 times which is not good, so we use spread function to clean it up.
+a.new <- a%>%
+  spread(key=percent_measure,value=percent)
+
+#Seperating the state and counties  
+a.sep <- a.new %>% 
+  separate(county_state, into = c("state","county"))
+
+filter(a.sep, state=="MA",county=="Nantucket",year=="1970") %>%
+  select(`percent_less than_hs_diploma`) %>%
+head() ##33.7%
+
+filter(a.sep, state=="MA",county=="Nantucket",year=="2015") %>%
+  select(`percent_less than_hs_diploma`) %>%
+head() #5.2%
+```
++ 3.1 What is the average population percentage that did not earn a high school diploma for the counties in Alabama for the year 2015?
+```{r}
+s<- filter (a.sep, state=="AL",year== "2015") %>%
+  select(`percent_less than_hs_diploma`)
+
+head(mean(s$`percent_less than_hs_diploma`))
+```
++ 3.2 What is the average percentage of college graduates for the counties in the state of Massachusetts for the year 2015?
+```{r}
+x<- filter (a.sep, state=="MA",year== "2015") %>%
+  select(percent_four_plus_years_college)
+
+head(mean(x$percent_four_plus_years_college))
+```
++ 3.3 Determine the average percentage of the population that did not earn a high school diploma for the counties in Alabama for each year within the dataset. The result should return the calendar year and the average percentage drop out rate for that year.
+```{r}
+filter (a.sep, state=="AL") %>%
+  select(year,`percent_less than_hs_diploma`) %>%
+  group_by(year) %>%
+  summarise(avg.not.hs.diploma=mean(`percent_less than_hs_diploma`)) %>%
+  head()
+```
+
++ 3.4 What is the most common rural_urban code for the U.S. counties?
+
+```{r}
+a.sep %>%
+count(rural_urban_cont_code) %>%
+arrange(desc(n))
+```
++ 3.5 Which counties have not been coded with a rural urban code? Return a result that contains two fields: County, State for the counties that has not been assigned a rural urban code. Do not return duplicate values in the result. Order the result alphabetically by state.
+```{r}
+#whenever the name of county is exactly the name of state, rural urban code is NULL. for 5 years it has 255 counties. If we use group_by it gives 51 states and counties.
+q <- a.sep %>%
+filter (rural_urban_cont_code=="NULL")%>%
+select(state,county,rural_urban_cont_code) %>%
+group_by(state,county,rural_urban_cont_code) %>%
+  summarise()
+q <- q[order(q$state),]#making in alphabetical order
+```
++ 3.6 What is the minimal percentage of college graduates for the counties in the state of Mississippi for the year 2010?
+```{r}
+#There is no data for year 2010, I calculate it for 2015
+a.sep %>%
+filter (state=="MS",year== "2015") %>%
+  select(county,percent_four_plus_years_college) %>%
+  arrange(desc(percent_four_plus_years_college)) %>%
+  tail()
+
+a.sep %>%
+filter (state=="MS",year== "2015") %>%
+  select(county,percent_four_plus_years_college) %>%
+  summarise(min(percent_four_plus_years_college))
+#the mimimum percentage belongs to Issaquena which is 7.2 %
+```
++ 2.7 Which state contains the most number of counties that have not been provided a rural urban code?
+```{r}
+v <- b %>%
+  filter(year=="2015") 
+mean(v$percent_unemployed) #average is 5.528102
+d <- select(a.sep, fips,county,state)
+fips <- as_data_frame(d)%>%
+  group_by(fips,county,state)  %>%
+  summarize()
+z <- inner_join(v,fips, by="fips")
+desc.2015 <- z%>%
+filter(percent_unemployed>5.528102) %>%
+  arrange(desc(percent_unemployed)) %>%
+  select(state,county,percent_unemployed)
+```
++ 3.8 In the year 2015, which fip counties, U.S. states contain a higher percentage of unemployed citizens than the percentage of college graduates? List the county name and the state name. Order the result alphabetically by state.
+
+```{r}
+n <- filter(a.sep,year=="2015") 
+m <- filter(b,year=="2015") %>%
+  select(fips,percent_unemployed)
+l<- merge(n,m,by="fips")
+k <- l %>%
+  filter(percent_unemployed>percent_four_plus_years_college) %>%
+  select(state,county,percent_unemployed,percent_four_plus_years_college)
+
+k <- k[order(k$state),]#making in alphabetical order
+```
+
++ 3.9 Return the county, U.S. state and year that contains the highest percentage of college graduates in this dataset?
+```{r}
+a.sep %>%
+  select(county,year,state,percent_four_plus_years_college) %>%
+  arrange(desc(percent_four_plus_years_college)) %>%
+  head()
+
+# The highest percentage goes to county "Falls" and state "VA" in 2015
+```
+
+
+
+4. Write a R function named get_state_county_education_data_dplyr(edf, state), it accepts a data frame containing education data and a state's abbreviation for arguments and produces a chart that shows the change in education across time for each county in that state. Use dplyr to extract the data. Write a few R statements that call the function with different state values. (5 points)
+
+```{r}
+library("ggplot2")
+get_state_county_education_data_dplyr <- function(EDF, STATEID, EL){
+  stateEDUData <- filter(EDF, State==STATEID)
+  
+  ggplot(stateEDUData, aes(fill=County, y=stateEDUData[,EL], x=YEAR)) + 
+  geom_bar(width=5, position="dodge", stat="identity", show.legend = T) +
+  scale_fill_hue(h = c(100, 400)) +
+  xlab('Year') + ylab(EL) + ggtitle(STATEID)
+}
+EDUCATION <- left_join(Education.DF,FIPS.DF)
+#Joining 2 dataframes
+get_state_county_education_data_dplyr(EDUCATION, "MA", "PLUS4College")
+#The number of people with the 4 year college degree is increasing from 1970 to 2015 in almost all counties in MA.
+get_state_county_education_data_dplyr(EDUCATION, "CA", "LESSDiploma")
+
+# we see that the number of students with less diploma degree is decreasing from 1970 to 2015 in California.
+
+```
+
+
+5. Write a R function named get_state_county_education_data_sql(edSQL, state), it accepts a SQL database connection containing education data and a state's abbreviation for arguments and produces a chart that shows the change in education across time for each county in that state. Use SQL SELECT to extract the data from the database. Write a few R statements that call the function with different state values. (10 points)
+```{r}
+get_state_county_education_data_sql <- function(edSQL, STATEID, EL){
+ Db.conn <- dbGetQuery(edSQL, paste("SELECT county, state, year, ", EL,
+           " FROM Education LEFT JOIN FIPS ON  Education.fipsID = FIPS.fipsID WHERE state=", STATEID, sep=""))
+ 
+  ggplot(Db.conn, aes(fill=County, y=Db.conn[,EL], x=YEAR)) + 
+  geom_bar(width=4, position="dodge", stat="identity", show.legend = T) +
+  scale_fill_hue(h = c(200, 600)) +
+  xlab('Year') + ylab(EL) + ggtitle(STATEID)
+}
+
+get_state_county_education_data_sql(db, "'MA'", "PLUS4College")
+get_state_county_education_data_sql(db, "'FL'", 'SOMEcollege')
+```
+
+
+6. Write a R function named get_state_county_unemployment_data_dplyr(udf, state), it accepts a data frame containing unemployment data and state's abbreviation and produces a chart that shows the change in unemployment across time for each county in that state. Use dplyr to extract the data. Write a few R statements that call the function with different state values. (5 points)
+```{r}
+UNEM.ST <- left_join(EMPLOY.DF, fips, by='fips')
+
+get_state_county_unemployment_data_dplyr <- function(udf, STATEID){
+  stateEMPData <- filter(udf, state==STATEID)
+  
+  ggplot(stateEMPData, aes(fill=county, y=unemployedRate, x=year)) + 
+  geom_bar(width=2, position="dodge", stat="identity", show.legend = T) +
+  scale_fill_hue(h = c(200, 600)) +
+  xlab("YEAR") + ylab("UNEMPLOYMENT DATA") + ggtitle(STATEID)
+}
+
+get_state_county_unemployment_data_dplyr(UNEM.ST, "MA")
+#unemployment rate is first increasing and then decreasing as the recession is passed
+
+get_state_county_unemployment_data_dplyr(UNEM.ST, "NV")
+#In nevada, the pattern is the same
+```
+
+
+7. Write a R function named get_state_county_unemployment_data_sql(udfSQL, state), it accepts a SQL database oject containing unemployment data and state's abbreviation and produces a chart that shows the change in education across time for each county in that state. Use SQL SELECT to extract the data. Write a few R statements that call the function with different state values. (10 points) 
+
+```{r}
+get_state_county_unemployment_data_sql <- function(udfSQL, STATEID){
+  Db.conn <- dbGetQuery(udfSQL, paste("SELECT county, state, year, unemployedRate",
+           " FROM EMPLOYMENT LEFT JOIN FIPS ON EMPLOYMENT.fips = FIPS.fipsID
+           WHERE state=", STATEID, sep=""))
+  
+  ggplot(Db.conn, aes(fill=County, y=unemployedRate, x=year)) + 
+  geom_bar(width=2, position="dodge", stat="identity", show.legend = T) +
+  scale_fill_hue(h = c(200, 600)) +#the range of colors
+  xlab('YEAR') + ylab("UNEMPLOYMENT DATA") + ggtitle(STATEID)
+}
+
+get_state_county_unemployment_data_sql(db, "'MA'")#Plot the data in Massachussets
+get_state_county_unemployment_data_sql(db, "'NV'")#Plot the data in Nevada
+```
+
+
+## Submission
+You need to submit an .Rmd extension file as well as the generated pdf file. Be sure to state all the assumptions and give explanations as comments in the .Rmd file wherever needed to help us assess your submission. Please name the submission file LAST_FirstInitial_1.Rmd for example for John Smith's 1st assignment, the file should be named Smith_J_1.Rmd. 
+
+
+
