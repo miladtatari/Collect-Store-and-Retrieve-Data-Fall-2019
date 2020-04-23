@@ -1,0 +1,169 @@
+---
+title: "Final-Project-DA5020"
+author: "Milad Tatari"
+date: "12/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(mapproj)
+
+#In the first step we read 4 CSV file for annual income data as follows: 2018,2017,2016,2015
+emp.2018 <- read.csv(file="employee-earnings-report-2018.csv",stringsAsFactors = F)
+emp.2017 <- read.csv(file="employee-earnings-report-2017.csv",stringsAsFactors = F)
+emp.2016 <- read.csv(file="employee-earnings-report-2016.csv",stringsAsFactors = F)
+emp.2015 <- read.csv(file="employee-earnings-report-2015.csv",stringsAsFactors = F)
+#Total earning column needs to be cleaned by removing "$" or "," or ...
+#We will use RegEx to clean the data and str_replace
+emp.2018 <- as_data_frame(emp.2018) 
+emp.2018$TOTAL.EARNINGS <- emp.2018$TOTAL.EARNINGS %>%
+  str_replace(",","")
+emp.2018$TOTAL.EARNINGS = as.numeric(emp.2018$TOTAL.EARNINGS)
+#Data cleaning for the year 2017
+emp.2017$TOTAL.EARNINGS <- emp.2017$TOTAL.EARNINGS %>%
+  str_replace(",","")%>%
+  str_replace("\\$","")
+emp.2017$TOTAL.EARNINGS = as.numeric(emp.2017$TOTAL.EARNINGS)
+#Data cleaning for the year 2016
+emp.2016$TOTAL.EARNINGS <- emp.2016$TOTAL.EARNINGS %>%
+  str_replace(",","")%>%
+  str_replace("\\$","")
+emp.2016$TOTAL.EARNINGS = as.numeric(emp.2016$TOTAL.EARNINGS)
+#Data cleaning for 2015
+emp.2015$TOTAL.EARNINGS <- emp.2015$TOTAL.EARNINGS %>%
+  str_replace(",","")%>%
+  str_replace("\\$","")
+emp.2015$TOTAL.EARNINGS = as.numeric(emp.2015$TOTAL.EARNINGS)
+#Calculation of the avarage income of different titles for the years 2015 to 2018
+earn.2018 <- emp.2018 %>%
+  group_by(TITLE) %>%
+  summarise(AVG.INC=mean(TOTAL.EARNINGS))
+earn.2017 <- emp.2017 %>%
+  group_by(TITLE) %>%
+  summarise(AVG.INC=mean(TOTAL.EARNINGS))
+earn.2016 <- emp.2016 %>%
+  group_by(TITLE) %>%
+  summarise(AVG.INC=mean(TOTAL.EARNINGS))
+earn.2015 <- emp.2015 %>%
+  group_by(TITLE) %>%
+  summarise(AVG.INC=mean(TOTAL.EARNINGS))
+
+#First we count the frequency of all job titles for further analysis
+Counted.Titles <- emp.2018 %>% 
+    count(TITLE) %>%
+    arrange(desc(n))# sorting in a descending order
+
+#Next we filter the job titles that is our interest and listed as the following 9 jobs.
+dd <- Counted.Titles%>%
+  filter(TITLE %in% c("Teacher","Police Officer","Fire Fighter	","Parking Meter Supervisor","Nurse","School Psychologist(1)","Sr Data Proc Sys Anl","Student Intern","Cafeteria Manager14"))
+library(ggplot2)
+#install.packages("ggplot2")
+p <- ggplot(dd, aes(x=2, y=n, fill=TITLE)) +
+        geom_bar(stat="identity") +
+        ggtitle("Number of employees in Boston area")+
+  coord_polar(theta="y")+geom_bar(stat="identity", color='black') +
+        # remove black diagonal line from legend
+        guides(fill=guide_legend(override.aes=list(colour=NA))) +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid  = element_blank())
+p
+
+# in the next part we aim to plot a barplot showing average annual income for years from 2015 to 2018.
+#First, we bind differnt data frames by rows using rbind
+ff <- rbind(earn.2015,earn.2016,earn.2017,earn.2018)
+
+#Next we filter some selected jobs as the job folows for more analysis
+d<- ff %>%
+filter(TITLE %in% c("Teacher","Police Officer","Fire Fighter	","Parking Meter Supervisor","Nurse","School Psychologist(1)","Sr Data Proc Sys Anl","Student Intern","Cafeteria Manager14"))
+#To make the filtered data frame ready for plotting and further analysis, we add another column as 2015,2016,2017, nad 2018
+d <- cbind(d,Year="")
+d$Year=as.numeric(d$Year)
+d$Year[1:8]=2015
+d$Year[9:16]=2016
+d$Year[17:24]=2017
+d$Year[25:32]=2018
+class(d$Year)
+s <- ggplot(d, aes(x=TITLE,y=AVG.INC/1000,fill=as.factor(Year)))+
+    geom_col(position = "dodge")+
+theme(text = element_text(size=10),axis.text.x = element_text(angle = 90, hjust = 1))+
+   labs(x="Job Title",y="Average Annual Income in 1000$ (Boston Area)",fill="Year",title="Average annual income for different jobs in Boston")
+
+
+#install.packages(zipcode)
+library(zipcode)
+data(zipcode)
+zipcode
+h <- emp.2018 %>%
+filter(TITLE %in% c("Teacher","Police Officer","Fire Fighter	","Parking Meter Supervisor","Nurse","School Psychologist(1)","Sr Data Proc Sys Anl","Student Intern","Cafeteria Manager14"))
+h1 <- h %>%
+  select(TITLE,POSTAL) %>%
+  group_by(POSTAL,TITLE) %>%
+  summarise()
+names(zipcode)[names(zipcode) == "zip"] <- "POSTAL"
+
+
+
+m <- merge(h,zipcode)
+
+#We count the number of police officers and teachers in diffrent areas of Boston as:
+#02148 North Boston
+#02135 West Boston
+#02128 East Boston
+#02136, 02132 South Boston
+#02110,02108,02109,02113,02114 Downtown
+Count.tea.down <- emp.2018 %>%
+  filter(TITLE=="Teacher",POSTAL%in%c("02108","02109","02110","02114","02222"))%>%
+  count() #returns 33
+# So we run for all zip codes and enter the values in a new data fram to plot a map. This plot will show the number of teachers and police officers as the most frequent employees in different areas of Boston
+NUMBER <- as.numeric(c("1","45","31","144","44","89","347","425","3","33"))
+TITLES <- c("Police Officers","Teachers","Police Officers","Teachers","Police Officers","Teachers","Police Officers","Teachers","Police Officers","Teachers")
+POSTAL <- as.numeric(c("2148","2148","2135","2135","2128","2128","2136","2136","2110","2110"))
+#Making each defined data as a data frame and then merge it with zipcode data to add latitude and longitude to the data fram that is required for map plotting
+dfx <- as.data.frame(NUMBER)
+dfy <- as.data.frame(TITLES)
+dfz <- as.data.frame(POSTAL)
+
+df <- cbind(dfx,dfy,dfz)
+
+
+df$POSTAL <- df$POSTAL %>%
+  str_replace("([0-9]{4})","0\\1")
+final.data <- merge(df,zipcode)
+#colnames(test1)[2] <- "TITLE"
+us<-map_data('state')
+us <- us %>%
+  filter(region=="massachusetts")
+# This is going to plot tha map 
+r <- ggplot() +
+  geom_polygon(data=us,aes(x=long,y=lat,group=group),color='Black',fill="grey",alpha=.4)+
+  geom_point(data=final.data,aes(x=longitude,y=latitude,color = TITLES,size=NUMBER),alpha=.5)+
+  scale_size(name="Number of Employees",range = c(1, 10))+
+  theme_void() + coord_map()
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
