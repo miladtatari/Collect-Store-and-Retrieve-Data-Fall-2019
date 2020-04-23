@@ -1,0 +1,420 @@
+---
+title: 'DA5020 - Homework 5: Dates and Times'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  # mute messages output
+  message = FALSE
+)
+```
+
+Continue working with Farmers Market data from last week.
+
+This week's assignment is not only about dates and times, but also what you learnt from past weeks: data transformation, strings, and more.
+
+You may also need to go through a review on [R control statesments](http://uc-r.github.io/control_statements) since they will come handy in solving some of the problems.
+
+## Questions
+```{r}
+library(readxl)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+
+
+```
+
+
+1. (10 points) Add a new column `Season1Days` that contains the number of days a market is opened per week (for the dates it is open).
+```{r,echo=T, message=F, warning=F}
+na.vals <- c("", "NA", "n/a", "N/A", "none")
+fmarkets <- read.csv("farmers_market.csv", na = na.vals, stringsAsFactors = F)
+#kyfp <- read_xls("kyfprojects.xls", na = na.vals)
+```
+```{r}
+#Let's use a regex function to match all weekdays
+#Then we count number of grouped matches
+reex<-c("([Mm][Oo][Nn])|([Tt][Uu][Ee])|([Ww][Ee][Dd])|([Tt][Hh][Uu])|([Ff][Rr][Ii])|([Ss][Aa][Tt])|([Ss][Uu][Nn])")
+fmarkets<-fmarkets%>%
+  mutate(
+    Season1Days = Season1Time%>%
+      str_count(reex),
+Season1Days = ifelse(Season1Days == "", NA, Season1Days))
+           
+```
+
+
+
+2. (10 points) Add a new column `WeekendOpen` indicating whether a market opens during weekends in `Season1`.
+
+```{r}
+reex<-c("(([Ss][Aa][Tt])|([Ss][Uu][Nn]))")# Defining a regext to catch saturdays or sundays
+
+# if a store is open in weekends, it prints YES and otherwise it says NO
+fmarkets<-fmarkets %>%
+  mutate(
+   WeekendOpen= Season1Time%>% str_detect(reex)) 
+fmarkets$WeekendOpen<-as.character(fmarkets$WeekendOpen)
+fmarkets$WeekendOpen<-str_replace(fmarkets$WeekendOpen,c("TRUE"),"YES")
+fmarkets$WeekendOpen<-str_replace(fmarkets$WeekendOpen,c("FALSE"),"NO")
+
+```
+
+
+3. (20 points) Find out which markets close before 6PM, and which open only for fewer than 4 hours a day. For simplicity, consider only `Season1Time`. For markets with different open hours across a week, use the average length of open hours for the days they actually open.
+```{r}
+reex<-c("(([0-9]*)[0-9:]{4}) [aApP][mM]") # Defining a regex to catch the time
+fmarkets <- cbind(fmarkets, CloseBefo6=logical(nrow(fmarkets))) # adding a new column to see whther a market close befor 6 or not
+
+# Now let's write a for loop to see what stores close before 18. If it is TRUE means that the store close before 6 PM otherwise it is false.
+for (i in 1:nrow(fmarkets)) { fmarkets[i, 'CloseBefo6'] = max(as.numeric(as.difftime(unlist(str_extract_all(fmarkets[i,'Season1Time'],reex)), format="%I:%M %p")))<18}
+
+head(fmarkets$CloseBefo6,10)
+
+#partb. We want to see what store are open less than 4 hours a day. 
+
+reex1<-c("([0-9]*)[0-9:]{4}([ ]*)[aApP][mM]([ ]*)[-]([ ]*)([0-9]*)[0-9:]{4}([ ]*)[aApP][mM]|[0-9]{1}[aApP][mM]-[0-9]{1}[aApP][mM]") # Defing a regex to match all the patterns like Wed: 9:00 AM-1:00 PM;
+fmarkets <- cbind(fmarkets, averege.open=numeric(nrow(fmarkets)), stringsAsFactors=F)
+fmarkets <- cbind(fmarkets, is.less.4h=character(nrow(fmarkets)), stringsAsFactors=F)
+
+#fmarkets$Season1Time <- fmarkets$Season1Time %>%
+  #str_replace("([0-9]{1})([ap][mM])","\\1:00")
+for (i in 1:nrow(fmarkets)) {#i is acting on rows
+  w<-unlist(strsplit(fmarkets$Season1Time[i],";")) # string splitting since all the time are splitted by ;
+  d <- numeric(length(w))
+  if (is.na(w[1])){
+  fmarkets[i, 'is.less.4h'] = "NO DATA"
+  next}
+  for (j in 1:length(w)) {# Avergaing for all the days that a store is open
+    s<-unlist(str_extract_all(w[j],reex1))
+    d[j]<-diff(as.numeric(as.difftime(unlist(strsplit(s, '-')), format="%I:%M %p")))}
+  fmarkets$averege.open[i]<-mean(d)
+  if (fmarkets$averege.open[i]<4){ fmarkets[i, 'is.less.4h'] <- "YES"}
+  else {fmarkets[i, 'is.less.4h'] <- "NO"}}
+
+head(fmarkets$is.less.4h,20)
+
+```
+
+
+4. (40 Points) The seasons are not standardized and would make analysis difficult. Create four new columns for four seasons (Spring, Summer, Fall, Winter), indicating whether a market is available in that season. Also, create two additional columns `HalfYear` and `YearRound` to identify those who open across seasons. Define "half year" and "year round" on your own terms, but explain them before you write the code (or as comments in your code). (Hint: you may want to create even more auxiliary columns, `Season1BeginDate` and `Season1EndDate` for example.)
+
+```{r}
+fmarket.s <- fmarkets[,c(11,13,15,17,19)]# to make our analysis more clear we define a new data fram that has only date columns
+library(dplyr)
+
+#First, we need to clean the data. In this problem we are going to change all the date formats to m/d/y like 10/19/2019. We have seen a couple of formats in season dates like November 1, 2019 or May to October. All dates will be formatted to 10/19/2019 for example for better date manipulations. 
+#Starting with season1date:
+fmarket.s$Season1Date <- fmarket.s$Season1Date%>%
+  str_remove_all(", [0-9]{4}") %>% # removing  year in format  ", 2019" 
+str_replace("([jJ]an[.]*[uary]) ([0-9]+)","01/\\2")%>% # Janunary to 01/ plus the second group of patterned match as day of the months
+str_replace("([fF]eb[.]*[ruary]*) ([0-9]+)","02/\\2")%>%
+str_replace("([mM]ar[.]*[ch]*) ([0-9]+)","03/\\2")%>%
+str_replace("([aA]pr[.]*[il]*) ([0-9]+)","04/\\2")%>%
+str_replace("([Mm]ay) ([0-9]+)","05/\\2")%>%
+str_replace("([Jj]un[.]*[e]*) ([0-9]+)","06/\\2")%>%
+str_replace("([jJ]ul[.]*[y]*) ([0-9]+)","07/\\2")%>%
+str_replace("([aA]gu[.]*[st]*) ([0-9]+)","08/\\2")%>%
+str_replace("([sS]ep[.]*[tember]*) ([0-9]+)","09/\\2")%>%
+str_replace("([oO]ct[.]*[ober]*) ([0-9]+)","10/\\2")%>%
+str_replace("([nN]ov[.]*[ember]*) ([0-9]+)","11/\\2")%>%
+str_replace("([dD]ec[.]*[ember]) ([0-9]+)","12/\\2")
+
+#Same for season 2
+fmarket.s$Season2Date <- fmarket.s$Season2Date%>%
+  str_remove_all(", [0-9]{4}") %>% # removing  year in format  ", 2019" 
+str_replace("([jJ]an[.]*[uary]) ([0-9]+)","01/\\2")%>% # Janunary to 01/ plus the second group of patterned match as day of the months
+str_replace("([fF]eb[.]*[ruary]*) ([0-9]+)","02/\\2")%>%
+str_replace("([mM]ar[.]*[ch]*) ([0-9]+)","03/\\2")%>%
+str_replace("([aA]pr[.]*[il]*) ([0-9]+)","04/\\2")%>%
+str_replace("([Mm]ay) ([0-9]+)","05/\\2")%>%
+str_replace("([Jj]un[.]*[e]*) ([0-9]+)","06/\\2")%>%
+str_replace("([jJ]ul[.]*[y]*) ([0-9]+)","07/\\2")%>%
+str_replace("([aA]gu[.]*[st]*) ([0-9]+)","08/\\2")%>%
+str_replace("([sS]ep[.]*[tember]*) ([0-9]+)","09/\\2")%>%
+str_replace("([oO]ct[.]*[ober]*) ([0-9]+)","10/\\2")%>%
+str_replace("([nN]ov[.]*[ember]*) ([0-9]+)","11/\\2")%>%
+str_replace("([dD]ec[.]*[ember]) ([0-9]+)","12/\\2")
+
+
+#same for season 3
+fmarket.s$Season3Date <- fmarket.s$Season3Date%>%
+  str_remove_all(", [0-9]{4}") %>% # removing  year in format  ", 2019" 
+str_replace("([jJ]an[.]*[uary]) ([0-9]+)","01/\\2")%>% # Janunary to 01/ plus the second group of patterned match as day of the months
+str_replace("([fF]eb[.]*[ruary]*) ([0-9]+)","02/\\2")%>%
+str_replace("([mM]ar[.]*[ch]*) ([0-9]+)","03/\\2")%>%
+str_replace("([aA]pr[.]*[il]*) ([0-9]+)","04/\\2")%>%
+str_replace("([Mm]ay) ([0-9]+)","05/\\2")%>%
+str_replace("([Jj]un[.]*[e]*) ([0-9]+)","06/\\2")%>%
+str_replace("([jJ]ul[.]*[y]*) ([0-9]+)","07/\\2")%>%
+str_replace("([aA]gu[.]*[st]*) ([0-9]+)","08/\\2")%>%
+str_replace("([sS]ep[.]*[tember]*) ([0-9]+)","09/\\2")%>%
+str_replace("([oO]ct[.]*[ober]*) ([0-9]+)","10/\\2")%>%
+str_replace("([nN]ov[.]*[ember]*) ([0-9]+)","11/\\2")%>%
+str_replace("([dD]ec[.]*[ember]) ([0-9]+)","12/\\2")
+
+#same for season 4
+fmarket.s$Season4Date <- fmarket.s$Season4Date%>%
+  str_remove_all(", [0-9]{4}") %>% # removing  year in format  ", 2019" 
+str_replace("([jJ]an[.]*[uary]) ([0-9]+)","01/\\2")%>% # Janunary to 01/ plus the second group of patterned match as day of the months
+str_replace("([fF]eb[.]*[ruary]*) ([0-9]+)","02/\\2")%>%
+str_replace("([mM]ar[.]*[ch]*) ([0-9]+)","03/\\2")%>%
+str_replace("([aA]pr[.]*[il]*) ([0-9]+)","04/\\2")%>%
+str_replace("([Mm]ay) ([0-9]+)","05/\\2")%>%
+str_replace("([Jj]un[.]*[e]*) ([0-9]+)","06/\\2")%>%
+str_replace("([jJ]ul[.]*[y]*) ([0-9]+)","07/\\2")%>%
+str_replace("([aA]gu[.]*[st]*) ([0-9]+)","08/\\2")%>%
+str_replace("([sS]ep[.]*[tember]*) ([0-9]+)","09/\\2")%>%
+str_replace("([oO]ct[.]*[ober]*) ([0-9]+)","10/\\2")%>%
+str_replace("([nN]ov[.]*[ember]*) ([0-9]+)","11/\\2")%>%
+str_replace("([dD]ec[.]*[ember]) ([0-9]+)","12/\\2")
+
+#s <- unlist((strsplit(fmarket.s$Season1Date," to ")))
+#Now, let's change the format May to October as 05/01 to 10/01 for all 4 seasons
+fmarket.s$Season1Date <- fmarket.s$Season1Date%>%
+str_replace("[jJ]anuary","01/01")%>%
+str_replace("[fF]ebruary","02/01")%>%
+str_replace("[mM]arch","03/01")%>%
+str_replace("[aA]pril","04/01")%>%
+str_replace("[Mm]ay","05/01")%>%
+str_replace("[jJ]une","06/01")%>%
+str_replace("[jJ]uly","07/01")%>%
+str_replace("[aA]gust","08/01")%>%
+str_replace("[sS]eptember","09/01")%>%
+str_replace("[oO]ctober","10/01")%>%
+str_replace("[nN]ovember","11/01")%>%
+str_replace("[dD]ecember","12/01")
+
+fmarket.s$Season2Date <- fmarket.s$Season2Date%>%
+str_replace("[jJ]anuary","01/01")%>%
+str_replace("[fF]ebruary","02/01")%>%
+str_replace("[mM]arch","03/01")%>%
+str_replace("[aA]pril","04/01")%>%
+str_replace("[Mm]ay","05/01")%>%
+str_replace("[jJ]une","06/01")%>%
+str_replace("[jJ]uly","07/01")%>%
+str_replace("[aA]gust","08/01")%>%
+str_replace("[sS]eptember","09/01")%>%
+str_replace("[oO]ctober","10/01")%>%
+str_replace("[nN]ovember","11/01")%>%
+str_replace("[dD]ecember","12/01")
+
+fmarket.s$Season3Date <- fmarket.s$Season3Date%>%
+str_replace("[jJ]anuary","01/01")%>%
+str_replace("[fF]ebruary","02/01")%>%
+str_replace("[mM]arch","03/01")%>%
+str_replace("[aA]pril","04/01")%>%
+str_replace("[Mm]ay","05/01")%>%
+str_replace("[jJ]une","06/01")%>%
+str_replace("[jJ]uly","07/01")%>%
+str_replace("[aA]gust","08/01")%>%
+str_replace("[sS]eptember","09/01")%>%
+str_replace("[oO]ctober","10/01")%>%
+str_replace("[nN]ovember","11/01")%>%
+str_replace("[dD]ecember","12/01")
+
+fmarket.s$Season4Date <- fmarket.s$Season4Date%>%
+str_replace("[jJ]anuary","01/01")%>%
+str_replace("[fF]ebruary","02/01")%>%
+str_replace("[mM]arch","03/01")%>%
+str_replace("[aA]pril","04/01")%>%
+str_replace("[Mm]ay","05/01")%>%
+str_replace("[jJ]une","06/01")%>%
+str_replace("[jJ]uly","07/01")%>%
+str_replace("[aA]gust","08/01")%>%
+str_replace("[sS]eptember","09/01")%>%
+str_replace("[oO]ctober","10/01")%>%
+str_replace("[nN]ovember","11/01")%>%
+str_replace("[dD]ecember","12/01")
+
+#now, the data is cleaned, let's add auxiliary columns as begin date and end dates for different seasons
+fmarket.s <- cbind(fmarket.s, SEASON1BeginDate =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, SEASON1EndDate =character(nrow(fmarkets)), stringsAsFactors=F)
+
+# We split every season column by " to " to establish two additional columns as begin date and end date for further analysis
+for (i in 1:nrow(fmarket.s)) {
+  q <- unlist((strsplit(fmarket.s$Season1Date[i]," to ")))
+  fmarket.s[i,"SEASON1BeginDate"]=q[1]
+  fmarket.s[i,"SEASON1EndDate"]=q[2]
+}
+
+
+#Same trend for all seasons (there are 4 columns)
+fmarket.s <- cbind(fmarket.s, SEASON2BeginDate =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, SEASON2EndDate =character(nrow(fmarkets)), stringsAsFactors=F)
+
+
+for (i in 1:nrow(fmarket.s)) {
+  q <- unlist((strsplit(fmarket.s$Season2Date[i]," to ")))
+  fmarket.s[i,"SEASON2BeginDate"]=q[1]
+  fmarket.s[i,"SEASON2EndDate"]=q[2]
+}
+
+fmarket.s <- cbind(fmarket.s, SEASON3BeginDate =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, SEASON3EndDate =character(nrow(fmarkets)), stringsAsFactors=F)
+
+
+for (i in 1:nrow(fmarket.s)) {
+  q <- unlist((strsplit(fmarket.s$Season3Date[i]," to ")))
+  fmarket.s[i,"SEASON3BeginDate"]=q[1]
+  fmarket.s[i,"SEASON3EndDate"]=q[2]
+}
+
+fmarket.s <- cbind(fmarket.s, SEASON4BeginDate =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, SEASON4EndDate =character(nrow(fmarkets)), stringsAsFactors=F)
+
+
+for (i in 1:nrow(fmarket.s)) {
+  q <- unlist((strsplit(fmarket.s$Season4Date[i]," to ")))
+  fmarket.s[i,"SEASON4BeginDate"]=q[1]
+  fmarket.s[i,"SEASON4EndDate"]=q[2]
+}
+
+# We are removing the year in order to calculat what market is available in what season, later, we define 4 seasons as spring/summer/fall/winter.
+fmarket.s$SEASON1BeginDate<-str_replace(fmarket.s$SEASON1BeginDate,"/[0-9]{4}","")
+fmarket.s$SEASON1EndDate<-str_replace(fmarket.s$SEASON1EndDate,"/[0-9]{4}","")
+fmarket.s$SEASON2BeginDate<-str_replace(fmarket.s$SEASON2BeginDate,"/[0-9]{4}","")
+fmarket.s$SEASON2EndDate<-str_replace(fmarket.s$SEASON2EndDate,"/[0-9]{4}","")
+fmarket.s$SEASON3BeginDate<-str_replace(fmarket.s$SEASON3BeginDate,"/[0-9]{4}","")
+fmarket.s$SEASON3EndDate<-str_replace(fmarket.s$SEASON3EndDate,"/[0-9]{4}","")
+fmarket.s$SEASON4BeginDate<-str_replace(fmarket.s$SEASON4BeginDate,"/[0-9]{4}","")
+fmarket.s$SEASON4EndDate<-str_replace(fmarket.s$SEASON4EndDate,"/[0-9]{4}","")
+#Defining 4 seasons as additinal coulmns
+fmarket.s <- cbind(fmarket.s, Spring =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, Summer =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, Fall =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, Winter =character(nrow(fmarkets)), stringsAsFactors=F)
+
+
+# calculation of intervals for all seasons as we already derived begining and end date of every interval
+z1 <- interval(as.Date(fmarket.s$SEASON1BeginDate,"%m/%d"), as.Date(fmarket.s$SEASON1EndDate,"%m/%d"))
+
+z2<- interval(as.Date(fmarket.s$SEASON2BeginDate,"%m/%d"), as.Date(fmarket.s$SEASON2EndDate,"%m/%d"))
+
+z3 <- interval(as.Date(fmarket.s$SEASON3BeginDate,"%m/%d"), as.Date(fmarket.s$SEASON3EndDate,"%m/%d"))
+
+z4 <- interval(as.Date(fmarket.s$SEASON4BeginDate,"%m/%d"), as.Date(fmarket.s$SEASON4EndDate,"%m/%d"))
+
+k1 <- interval(as.Date("03/01","%m/%d"), as.Date("05/30","%m/%d"))# Spring period
+k2 <- interval(as.Date("06/01","%m/%d"),as.Date("08/30","%m/%d"))#Summer period
+k3 <- interval(as.Date("09/01","%m/%d"),as.Date("11/30","%m/%d"))#Fall
+
+k4 <- interval(as.Date("12/01","%m/%d"), as.Date("12/30","%m/%d"))#Winterpart1
+
+k5 <- interval(as.Date("01/01","%m/%d"), as.Date("02/28","%m/%d"))#Winterpart2
+
+#We calculate for all seasons, like spring all the days that a market is open. we assign zero to NA values. We repeat it for all seasons.let's sum up all the days that a market is open, it can be 0 to 90 days for every market
+p1<- day(as.period(intersect(k1, z1),"days"))
+p1[is.na(p1)] <- 0
+p2<- day(as.period(intersect(k1, z2),"days"))
+p2[is.na(p2)] <- 0
+p3<- day(as.period(intersect(k1, z3),"days"))
+p3[is.na(p3)] <- 0
+p4<- day(as.period(intersect(k1, z4),"days"))
+p4[is.na(p4)] <- 0
+fmarket.s$Spring <- p1+p2+p3+p4
+
+q1<- day(as.period(intersect(k2, z1),"days"))
+q1[is.na(q1)] <- 0
+q2<- day(as.period(intersect(k2, z2),"days"))
+q2[is.na(q2)] <- 0
+q3<- day(as.period(intersect(k2, z3),"days"))
+q3[is.na(q3)] <- 0
+q4<- day(as.period(intersect(k2, z4),"days"))
+q4[is.na(q4)] <- 0
+fmarket.s$Summer <- q1+q2+q3+q4
+
+r1<- day(as.period(intersect(k3, z1),"days"))
+r1[is.na(r1)] <- 0
+r2<- day(as.period(intersect(k3, z2),"days"))
+r2[is.na(r2)] <- 0
+r3<- day(as.period(intersect(k3, z3),"days"))
+r3[is.na(r3)] <- 0
+r4<- day(as.period(intersect(k3, z4),"days"))
+r4[is.na(r4)] <- 0
+fmarket.s$Fall <- r1+r2+r3+r4
+
+s1<- day(as.period(intersect(k4, z1),"days"))
+s1[is.na(s1)] <- 0
+s2<- day(as.period(intersect(k4, z2),"days"))
+s2[is.na(s2)] <- 0
+s3<- day(as.period(intersect(k4, z3),"days"))
+s3[is.na(s3)] <- 0
+s4<- day(as.period(intersect(k4, z4),"days"))
+s4[is.na(s4)] <- 0
+
+t1<- day(as.period(intersect(k5, z1),"days"))
+t1[is.na(t1)] <- 0
+t2<- day(as.period(intersect(k5, z2),"days"))
+t2[is.na(t2)] <- 0
+t3<- day(as.period(intersect(k5, z3),"days"))
+t3[is.na(t3)] <- 0
+t4<- day(as.period(intersect(k5, z4),"days"))
+t4[is.na(t4)] <- 0
+fmarket.s$Winter <- s1+s2+s3+s4+t1+t2+t3+t4
+
+# For the halfyear and full year calculations, we define a column as the total number of days that a store is open. Then if it is between 160 and 200 days, we call that this store is open HalfYear and if a store is open more than 340 days we say it is open Full year. 
+fmarket.s <- cbind(fmarket.s, HalfYear =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, YearAround =character(nrow(fmarkets)), stringsAsFactors=F)
+fmarket.s <- cbind(fmarket.s, TotalOpenDays =character(nrow(fmarkets)), stringsAsFactors=F)
+
+fmarket.s$TotalOpenDays <- fmarket.s$Spring+fmarket.s$Summer+fmarket.s$Fall+fmarket.s$Winter
+
+fmarket.s$HalfYear <-  ifelse(fmarket.s$TotalOpenDays<200 & fmarket.s$TotalOpenDays>160, "Yes", "No")
+fmarket.s$YearAround <-  ifelse( fmarket.s$TotalOpenDays>340, "Yes", "No")
+
+```
+
+
+5. (20 points) _Open question_: explore the new variables you just created. Aggregate them at different geographic levels, or some other categorical variable. What can you discover?
+
+```{r}
+
+#As an example, in problem 1, we have already calculated season 1 days, now lets average them over the state names to see what state has the more open days per week. 
+a <- fmarkets %>% group_by(State) # grouping the data by state
+b <- summarize(a,mean.open.day=mean(Season1Days,na.rm=TRUE))
+
+head(b,10)
+#Now let's use tha package ggmap and maps function to visualize the data for 3 states as an example.
+library("maps")
+map.text("state", regions=c("California","Alabama","Florida"), labels=c("1.072","1.61","1.41"))
+
+# Now let's do averaging over the whole year
+a1 <- fmarket.s %>% group_by(State) # grouping the data by state
+b1 <- summarize(a1,mean.open.year=mean(TotalOpenDays,na.rm=TRUE))
+
+head(b1,10)
+
+map.text("state", regions=c("California","Alabama","Florida"), labels=c("151","73","163"))
+
+Open.Spring <- fmarket.s %>% group_by(State) # grouping the data by state
+OSP <- summarize(Open.Spring,mean.open.SPRING=mean(Spring,na.rm=TRUE))
+
+Open.Summer <- fmarket.s %>% group_by(State) # grouping the data by state
+OSU <- summarize(Open.Summer,mean.open.Summer=mean(Summer,na.rm=TRUE))
+
+Open.Fall <- fmarket.s %>% group_by(State) # grouping the data by state
+OF <- summarize(Open.Fall,mean.open.Fall=mean(Fall,na.rm=TRUE))
+
+Open.Winter <- fmarket.s %>% group_by(State) # grouping the data by state
+OW <- summarize(Open.Winter,mean.open.Winter=mean(Winter,na.rm=TRUE))
+
+df1<-merge(x=OSP,y=OSU,by="State")
+df2<-merge(x=OF,y=OW,by="State")
+df<-merge(x=df1,y=df2,by="State")
+
+head(df,10)
+
+#If we compare average of opening days for different states, It can be seen that in cold states like Alaska, averge open days of markets in Winter is 4 days, while the average for warmer states like California is 25 days. It seems logical. 
+```
+
+
+## Submission
+You need to submit an .Rmd extension file as well as the generated pdf file. Be sure to state all the assumptions and give explanations as comments in the .Rmd file wherever needed to help us assess your submission. Please name the submission file LAST_FirstInitial_1.Rmd for example for John Smith's 1st assignment, the file should be named Smith_J_1.Rmd. 
+
